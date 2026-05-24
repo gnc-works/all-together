@@ -220,6 +220,8 @@ function WalletChip({ me }: { me: ProfileLite }) {
   const balance = me.v2Balance
     ? `${Math.floor(Number(me.v2Balance))} CRC`
     : null;
+  // Use first 2 hex chars *after* 0x for the fallback monogram (e.g. "7F").
+  const monogram = me.address.slice(2, 4).toUpperCase();
   return (
     <div className="flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.03] py-1 pr-3 pl-1">
       {me.avatar ? (
@@ -230,8 +232,8 @@ function WalletChip({ me }: { me: ProfileLite }) {
           className="h-6 w-6 rounded-full object-cover"
         />
       ) : (
-        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-lime-300/20 text-[10px] font-semibold text-lime-300">
-          {label.slice(0, 2).toUpperCase()}
+        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-lime-300/15 text-[9px] font-semibold tracking-normal text-lime-300">
+          {monogram}
         </div>
       )}
       <div className="flex flex-col text-left leading-tight">
