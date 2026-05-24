@@ -193,3 +193,76 @@ export function shortAddress(addr: string): string {
   if (!addr) return '';
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
+
+// ----------------------------------------------------------------------------
+// Trust graph
+// ----------------------------------------------------------------------------
+
+// Returns the set of addresses the given truster currently trusts (active edges).
+export async function fetchOutgoingTrusts(truster: string): Promise<Set<string>> {
+  const res = await fetch('https://rpc.aboutcircles.com/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'circles_query',
+      params: [
+        {
+          Namespace: 'V_CrcV2',
+          Table: 'TrustRelations',
+          Filter: [
+            {
+              Type: 'FilterPredicate',
+              FilterType: 'Equals',
+              Column: 'truster',
+              Value: truster.toLowerCase(),
+            },
+          ],
+          Limit: 1000,
+          Order: [{ Column: 'timestamp', SortOrder: 'DESC' }],
+        },
+      ],
+    }),
+  });
+  if (!res.ok) return new Set();
+  const json = await res.json();
+  const cols: string[] = json.result?.columns ?? [];
+  const rows: unknown[][] = json.result?.rows ?? [];
+  const trusteeIdx = cols.indexOf('trustee');
+  const expiryIdx = cols.indexOf('expiryTime');
+  const nowSec = BigInt(Math.floor(Date.now() / 1000));
+  const set = new Set<string>();
+  for (const row of rows) {
+    const trustee = String(row[trusteeIdx] ?? '').toLowerCase();
+    if (!trustee) continue;
+    // expiryTime is an unbounded uint96 string; only include active trusts.
+    try {
+      const expiry = BigInt(String(row[expiryIdx] ?? '0'));
+      if (expiry <= nowSec) continue;
+    } catch {
+      // if parse fails, treat as active
+    }
+    set.add(trustee);
+  }
+  return set;
+}
+
+export function intersect(a: Set<string>, b: string[]): string[] {
+  return b.filter((x) => a.has(x.toLowerCase()));
+}
+
+// Pretty relative time like "12s ago", "3m ago", "2h ago".
+export function timeAgo(tsSeconds: number, nowMs = Date.now()): string {
+  const diffSec = Math.max(0, Math.floor(nowMs / 1000) - tsSeconds);
+  if (diffSec < 60) return `${diffSec}s ago`;
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  return `${Math.floor(diffSec / 86400)}d ago`;
+}
+
+// True when within the last `windowMin` minutes before the deadline.
+export function isUrgent(deadline: Date, windowMin = 30, nowMs = Date.now()): boolean {
+  const ms = deadline.getTime() - nowMs;
+  return ms > 0 && ms <= windowMin * 60_000;
+}

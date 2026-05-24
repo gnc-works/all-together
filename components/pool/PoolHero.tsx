@@ -11,11 +11,15 @@ import {
   HUB_V2,
   POOL_SAFE,
   fetchCycleDeposits,
+  fetchOutgoingTrusts,
   fetchProfile,
   fetchProfiles,
   formatCountdown,
   getCycleRange,
+  intersect,
+  isUrgent,
   shortAddress,
+  timeAgo,
   uniqueEntrants,
   type DepositRow,
   type ProfileLite,
@@ -32,10 +36,13 @@ export function PoolHero() {
   const [deposits, setDeposits] = useState<DepositRow[]>([]);
   const [entrantProfiles, setEntrantProfiles] = useState<ProfileLite[]>([]);
   const [me, setMe] = useState<ProfileLite | null>(null);
+  const [myTrusts, setMyTrusts] = useState<Set<string>>(new Set());
   const [load, setLoad] = useState<LoadState>('loading');
   const [now, setNow] = useState(Date.now());
   const [sending, setSending] = useState(false);
   const [txError, setTxError] = useState<string | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const wasEnteredRef = useRef(false);
 
   const entrants = useMemo(() => uniqueEntrants(deposits), [deposits]);
 
@@ -74,15 +81,19 @@ export function PoolHero() {
     };
   }, [entrants.length, entrants.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch own profile when wallet connects.
+  // Fetch own profile + outgoing trusts when wallet connects.
   useEffect(() => {
     if (!address) {
       setMe(null);
+      setMyTrusts(new Set());
       return;
     }
     let cancelled = false;
     fetchProfile(address).then((p) => {
       if (!cancelled) setMe(p);
+    });
+    fetchOutgoingTrusts(address).then((s) => {
+      if (!cancelled) setMyTrusts(s);
     });
     return () => {
       cancelled = true;
@@ -92,9 +103,24 @@ export function PoolHero() {
   const youEntered = address ? entrants.includes(address.toLowerCase()) : false;
   const potCrc = (BigInt(entrants.length) * ENTRY_AMOUNT_CRC).toString();
   const countdown = formatCountdown(cycle.deadline, now);
+  const urgent = isUrgent(cycle.deadline, 30, now);
   const myBalanceNum = me?.v2Balance ? Number(me.v2Balance) : null;
   const insufficient =
     myBalanceNum !== null && myBalanceNum < Number(ENTRY_AMOUNT_CRC);
+  const trustedInPool = useMemo(
+    () => intersect(myTrusts, entrants).filter((a) => a !== address?.toLowerCase()),
+    [myTrusts, entrants, address],
+  );
+
+  // Confetti when transitioning into the "entered" state.
+  useEffect(() => {
+    if (youEntered && !wasEnteredRef.current) {
+      wasEnteredRef.current = true;
+      void fireConfetti();
+      glow.current?.burst();
+    }
+    if (!youEntered) wasEnteredRef.current = false;
+  }, [youEntered]);
 
   async function handleEnter(e?: React.MouseEvent) {
     if (!address) return;
@@ -120,10 +146,10 @@ export function PoolHero() {
           '0x',
         ],
       });
-      await sendTransactions([{ to: HUB_V2, data, value: '0' }]);
+      const hashes = await sendTransactions([{ to: HUB_V2, data, value: '0' }]);
+      if (hashes && hashes[0]) setTxHash(hashes[0]);
       await new Promise((r) => setTimeout(r, 2500));
       await refresh();
-      glow.current?.burst();
     } catch (e2) {
       setTxError(e2 instanceof Error ? e2.message : 'Transfer failed');
     } finally {
@@ -169,6 +195,7 @@ export function PoolHero() {
           potCrc={potCrc}
           entrants={entrants}
           profiles={entrantProfiles}
+          trustedInPool={trustedInPool}
           youEntered={youEntered}
           loading={load === 'loading'}
         />
@@ -180,6 +207,7 @@ export function PoolHero() {
           youEntered={youEntered}
           sending={sending}
           insufficient={insufficient}
+          txHash={txHash}
           onEnter={handleEnter}
           onShare={handleShare}
         />
@@ -188,7 +216,9 @@ export function PoolHero() {
           <p className="mt-3 text-center text-sm text-red-400">{txError}</p>
         )}
 
-        <Timer value={countdown} />
+        <Timer value={countdown} urgent={urgent} />
+
+        <ActivityTicker deposits={deposits} profiles={entrantProfiles} now={now} />
 
         <Rules />
 
@@ -196,6 +226,42 @@ export function PoolHero() {
       </div>
     </main>
   );
+}
+
+// ---- Confetti (lazy-loaded) -------------------------------------------------
+
+async function fireConfetti() {
+  if (typeof window === 'undefined') return;
+  try {
+    const { default: confetti } = await import('canvas-confetti');
+    const lime = ['#bef264', '#a3e635', '#84cc16', '#ecfccb', '#ffffff'];
+    confetti({
+      particleCount: 90,
+      spread: 70,
+      startVelocity: 38,
+      origin: { x: 0.5, y: 0.45 },
+      colors: lime,
+      ticks: 220,
+    });
+    setTimeout(() => {
+      confetti({
+        particleCount: 40,
+        angle: 60,
+        spread: 55,
+        origin: { x: 0, y: 0.55 },
+        colors: lime,
+      });
+      confetti({
+        particleCount: 40,
+        angle: 120,
+        spread: 55,
+        origin: { x: 1, y: 0.55 },
+        colors: lime,
+      });
+    }, 200);
+  } catch {
+    // noop
+  }
 }
 
 // ---- Sections ---------------------------------------------------------------
@@ -220,7 +286,6 @@ function WalletChip({ me }: { me: ProfileLite }) {
   const balance = me.v2Balance
     ? `${Math.floor(Number(me.v2Balance))} CRC`
     : null;
-  // Use first 2 hex chars *after* 0x for the fallback monogram (e.g. "7F").
   const monogram = me.address.slice(2, 4).toUpperCase();
   return (
     <div className="flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.03] py-1 pr-3 pl-1">
@@ -254,12 +319,14 @@ function Hero({
   potCrc,
   entrants,
   profiles,
+  trustedInPool,
   youEntered,
   loading,
 }: {
   potCrc: string;
   entrants: string[];
   profiles: ProfileLite[];
+  trustedInPool: string[];
   youEntered: boolean;
   loading: boolean;
 }) {
@@ -295,6 +362,12 @@ function Hero({
         )}
       </p>
 
+      {count > 0 && !loading && trustedInPool.length > 0 && (
+        <p className="mt-2 text-xs text-lime-300/85">
+          you trust {trustedInPool.length} of them
+        </p>
+      )}
+
       {count > 0 && !loading && (
         <AvatarRow profiles={profiles} entrants={entrants} />
       )}
@@ -321,7 +394,7 @@ function AvatarRow({
     <div className="mt-5 flex max-w-full flex-wrap items-center justify-center gap-2">
       {entrants.slice(0, visible).map((addr) => {
         const p = profileByAddress.get(addr);
-        const initials = (p?.name ?? addr).slice(0, 2).toUpperCase();
+        const initials = (p?.name ?? addr.slice(2)).slice(0, 2).toUpperCase();
         return p?.avatar ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -355,6 +428,7 @@ function CTA({
   youEntered,
   sending,
   insufficient,
+  txHash,
   onEnter,
   onShare,
 }: {
@@ -364,6 +438,7 @@ function CTA({
   youEntered: boolean;
   sending: boolean;
   insufficient: boolean;
+  txHash: string | null;
   onEnter: (e: React.MouseEvent) => void;
   onShare: () => void;
 }) {
@@ -392,6 +467,16 @@ function CTA({
             You’re in for this week
           </span>
         </div>
+        {txHash && (
+          <a
+            href={`https://gnosisscan.io/tx/${txHash}`}
+            target="_blank"
+            rel="noopener"
+            className="text-center text-[11px] tracking-wider text-white/45 underline-offset-4 hover:underline"
+          >
+            View entry on gnosisscan →
+          </a>
+        )}
         <button
           onClick={onShare}
           className="w-full rounded-2xl border border-white/15 bg-white/[0.03] px-6 py-3 text-sm font-medium text-white/85 transition hover:bg-white/[0.06] active:scale-[0.98]"
@@ -442,16 +527,72 @@ function CTA({
   );
 }
 
-function Timer({ value }: { value: string }) {
+function Timer({ value, urgent }: { value: string; urgent: boolean }) {
   return (
-    <div className="mt-10 flex flex-col items-center rounded-2xl border border-white/10 bg-white/[0.03] px-6 py-5">
-      <span className="text-[11px] font-medium uppercase tracking-[0.24em] text-white/45">
-        Entries close in
+    <div
+      className={`mt-10 flex flex-col items-center rounded-2xl border px-6 py-5 transition-colors ${
+        urgent
+          ? 'border-lime-300/50 bg-lime-300/[0.08] animate-pulse'
+          : 'border-white/10 bg-white/[0.03]'
+      }`}
+    >
+      <span
+        className={`text-[11px] font-medium uppercase tracking-[0.24em] ${
+          urgent ? 'text-lime-200' : 'text-white/45'
+        }`}
+      >
+        {urgent ? 'Last call' : 'Entries close in'}
       </span>
-      <span className="font-numeric mt-2 text-2xl font-medium tabular-nums text-white">
+      <span
+        className={`font-numeric mt-2 text-2xl font-medium tabular-nums ${
+          urgent ? 'text-lime-200' : 'text-white'
+        }`}
+      >
         {value}
       </span>
-      <span className="mt-1 text-[11px] text-white/40">Sunday 23:59 CET</span>
+      <span
+        className={`mt-1 text-[11px] ${
+          urgent ? 'text-lime-200/80' : 'text-white/40'
+        }`}
+      >
+        Sunday 23:59 CET
+      </span>
+    </div>
+  );
+}
+
+function ActivityTicker({
+  deposits,
+  profiles,
+  now,
+}: {
+  deposits: DepositRow[];
+  profiles: ProfileLite[];
+  now: number;
+}) {
+  // Use the most recent 5 deposits (already ASC by timestamp).
+  const recent = useMemo(() => {
+    const valid = deposits.filter((d) => d.from); // skip blank rows
+    return valid.slice(-5).reverse(); // newest first
+  }, [deposits]);
+  const profileByAddress = useMemo(() => {
+    const map = new Map<string, ProfileLite>();
+    for (const p of profiles) map.set(p.address.toLowerCase(), p);
+    return map;
+  }, [profiles]);
+
+  if (recent.length === 0) return null;
+  const top = recent[0];
+  const p = profileByAddress.get(top.from.toLowerCase());
+  const label = p?.name ?? shortAddress(top.from);
+
+  return (
+    <div className="mt-3 flex items-center justify-center gap-2 rounded-full border border-white/8 bg-white/[0.02] px-4 py-2 text-[11px] text-white/55">
+      <span className="inline-block h-1.5 w-1.5 rounded-full bg-lime-300/80 shadow-[0_0_6px_rgba(190,242,100,0.7)]" />
+      <span>
+        <span className="text-white/85">{label}</span> entered ·{' '}
+        {timeAgo(top.timestamp, now)}
+      </span>
     </div>
   );
 }
