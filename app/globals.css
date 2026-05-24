@@ -87,15 +87,16 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif;
-    font-feature-settings: "ss01", "cv11";
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
   }
   html {
     @apply font-sans;
   }
   .font-numeric {
-    font-family: "SF Mono", ui-monospace, "Menlo", "Consolas", monospace;
-    font-feature-settings: "tnum", "ss01";
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-feature-settings: "tnum";
+    font-variant-numeric: tabular-nums;
   }
 }
