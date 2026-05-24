@@ -15,9 +15,11 @@ import {
   fetchProfile,
   fetchProfiles,
   formatCountdown,
+  formatCrc,
   getCycleRange,
   intersect,
   isUrgent,
+  parseInsufficientBalanceError,
   shortAddress,
   timeAgo,
   uniqueEntrants,
@@ -151,7 +153,15 @@ export function PoolHero() {
       await new Promise((r) => setTimeout(r, 2500));
       await refresh();
     } catch (e2) {
-      setTxError(e2 instanceof Error ? e2.message : 'Transfer failed');
+      const parsed = parseInsufficientBalanceError(e2);
+      if (parsed) {
+        const have = formatCrc(parsed.balance);
+        setTxError(
+          `Your wallet has ${have} of your own personal CRC. The pool needs ${ENTRY_AMOUNT_CRC.toString()} of your own minted token (not your total CRC balance). v0 limit — Cycle 02 switches to a Circles Group, which accepts any CRC you hold.`,
+        );
+      } else {
+        setTxError(e2 instanceof Error ? e2.message : 'Transfer failed');
+      }
     } finally {
       setSending(false);
     }
@@ -213,7 +223,9 @@ export function PoolHero() {
         />
 
         {txError && (
-          <p className="mt-3 text-center text-sm text-red-400">{txError}</p>
+          <div className="mt-3 rounded-2xl border border-red-400/30 bg-red-400/[0.05] px-5 py-4 text-sm leading-relaxed text-red-100/90">
+            {txError}
+          </div>
         )}
 
         <Timer value={countdown} urgent={urgent} />
@@ -523,6 +535,10 @@ function CTA({
       >
         Share with friends →
       </button>
+      <p className="px-2 text-center text-[11px] leading-relaxed text-white/40">
+        Entry uses {ENTRY_AMOUNT_CRC.toString()} of your <em className="not-italic text-white/60">own minted</em> CRC, not your total balance.
+        Cycle 02 will accept any CRC via a Circles Group.
+      </p>
     </div>
   );
 }

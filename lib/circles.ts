@@ -266,3 +266,46 @@ export function isUrgent(deadline: Date, windowMin = 30, nowMs = Date.now()): bo
   const ms = deadline.getTime() - nowMs;
   return ms > 0 && ms <= windowMin * 60_000;
 }
+
+// Convert an atto-CRC bigint to a human-readable CRC string with up to 2 decimal places.
+export function formatCrc(atto: bigint): string {
+  const whole = atto / 10n ** 18n;
+  const frac = atto % 10n ** 18n;
+  if (frac === 0n) return whole.toString();
+  // 2 decimal places
+  const fracStr = (frac / 10n ** 16n).toString().padStart(2, '0');
+  return `${whole}.${fracStr}`;
+}
+
+// Try to decode an ERC1155InsufficientBalance error (selector 0x03dee4c5) out of
+// whatever the wallet/host throws. Returns null if it doesn't look like that error.
+//
+// Signature: error ERC1155InsufficientBalance(address sender, uint256 balance, uint256 needed, uint256 tokenId)
+// Encoded as: 4-byte selector + 4 * 32 bytes of args.
+export type InsufficientBalanceError = {
+  sender: string;
+  balance: bigint; // atto-CRC
+  needed: bigint; // atto-CRC
+  tokenId: bigint;
+};
+
+export function parseInsufficientBalanceError(err: unknown): InsufficientBalanceError | null {
+  if (!err) return null;
+  const msg =
+    err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  if (!msg) return null;
+  // Find the first occurrence of the selector + at least 4 args.
+  const m = msg.match(/0x03dee4c5([0-9a-fA-F]{256})/);
+  if (!m) return null;
+  const hex = m[1];
+  const word = (i: number) => hex.slice(i * 64, (i + 1) * 64);
+  try {
+    const sender = '0x' + word(0).slice(24); // last 20 bytes
+    const balance = BigInt('0x' + word(1));
+    const needed = BigInt('0x' + word(2));
+    const tokenId = BigInt('0x' + word(3));
+    return { sender, balance, needed, tokenId };
+  } catch {
+    return null;
+  }
+}
