@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { encodeFunctionData } from 'viem';
 
 import { useWallet } from '@/hooks/use-wallet';
@@ -16,12 +16,14 @@ import {
   uniqueEntrants,
   type DepositRow,
 } from '@/lib/circles';
+import { GlowField, type GlowFieldHandle } from './GlowField';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
 export function PoolHero() {
   const { address, isConnected, isMiniappHost } = useWallet();
   const cycle = useMemo(() => getCycleRange(), []);
+  const glow = useRef<GlowFieldHandle>(null);
 
   const [deposits, setDeposits] = useState<DepositRow[]>([]);
   const [load, setLoad] = useState<LoadState>('loading');
@@ -52,8 +54,15 @@ export function PoolHero() {
   const potCrc = (BigInt(entrants.length) * ENTRY_AMOUNT_CRC).toString();
   const countdown = formatCountdown(cycle.deadline, now);
 
-  async function handleEnter() {
+  async function handleEnter(e?: React.MouseEvent) {
     if (!address) return;
+    // Burst the glow under the click point for visual feedback.
+    if (e) {
+      glow.current?.burst(
+        e.clientX / window.innerWidth,
+        e.clientY / window.innerHeight,
+      );
+    }
     setSending(true);
     setTxError(null);
     try {
@@ -73,8 +82,10 @@ export function PoolHero() {
       await sendTransactions([{ to: HUB_V2, data, value: '0' }]);
       await new Promise((r) => setTimeout(r, 2500));
       await refresh();
-    } catch (e) {
-      setTxError(e instanceof Error ? e.message : 'Transfer failed');
+      // Second burst when the deposit lands.
+      glow.current?.burst();
+    } catch (e2) {
+      setTxError(e2 instanceof Error ? e2.message : 'Transfer failed');
     } finally {
       setSending(false);
     }
@@ -82,15 +93,7 @@ export function PoolHero() {
 
   return (
     <main className="relative flex min-h-[100dvh] w-full flex-col items-center bg-black text-white">
-      {/* Subtle radial glow behind the pot */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[60%] opacity-50"
-        style={{
-          background:
-            'radial-gradient(ellipse at 50% 20%, rgba(190, 242, 100, 0.18), transparent 65%)',
-        }}
-      />
+      <GlowField ref={glow} />
 
       <div className="relative z-10 flex w-full max-w-md flex-1 flex-col px-5 pt-8 pb-10 sm:px-6">
         <Header />
@@ -219,7 +222,7 @@ function CTA({
   loading: boolean;
   youEntered: boolean;
   sending: boolean;
-  onEnter: () => void;
+  onEnter: (e: React.MouseEvent) => void;
 }) {
   if (!connected) {
     return (
