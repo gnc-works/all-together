@@ -49,7 +49,7 @@ export function PoolHero() {
   const youEntered = address
     ? entrants.includes(address.toLowerCase())
     : false;
-  const potCrc = BigInt(entrants.length) * ENTRY_AMOUNT_CRC;
+  const potCrc = (BigInt(entrants.length) * ENTRY_AMOUNT_CRC).toString();
   const countdown = formatCountdown(cycle.deadline, now);
 
   async function handleEnter() {
@@ -80,91 +80,133 @@ export function PoolHero() {
     }
   }
 
-  // ---- Render branches -------------------------------------------------------
-
   return (
-    <Frame>
-      <Eyebrow>All Together</Eyebrow>
-
-      <Pot
-        crc={potCrc.toString()}
-        entrants={entrants.length}
-        youEntered={youEntered}
-        loading={load === 'loading'}
+    <main className="relative flex min-h-[100dvh] w-full flex-col items-center bg-black text-white">
+      {/* Subtle radial glow behind the pot */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-[60%] opacity-50"
+        style={{
+          background:
+            'radial-gradient(ellipse at 50% 20%, rgba(190, 242, 100, 0.18), transparent 65%)',
+        }}
       />
 
-      <Action
-        connected={isConnected}
-        miniappHost={isMiniappHost}
-        loading={load === 'loading'}
-        youEntered={youEntered}
-        sending={sending}
-        onEnter={handleEnter}
-      />
+      <div className="relative z-10 flex w-full max-w-md flex-1 flex-col px-5 pt-8 pb-10 sm:px-6">
+        <Header />
 
-      {txError && (
-        <p className="mt-3 text-center text-xs text-red-400">{txError}</p>
-      )}
+        <Hero
+          potCrc={potCrc}
+          entrants={entrants}
+          youEntered={youEntered}
+          loading={load === 'loading'}
+        />
 
-      <HowItWorks />
+        <CTA
+          connected={isConnected}
+          miniappHost={isMiniappHost}
+          loading={load === 'loading'}
+          youEntered={youEntered}
+          sending={sending}
+          onEnter={handleEnter}
+        />
 
-      <Countdown label="entries close in" value={countdown} />
-    </Frame>
-  );
-}
+        {txError && (
+          <p className="mt-3 text-center text-sm text-red-400">{txError}</p>
+        )}
 
-// ---- UI primitives ----------------------------------------------------------
+        <Timer value={countdown} />
 
-function Frame({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex min-h-[100dvh] flex-col items-center justify-start bg-black px-6 pt-12 pb-16 text-white">
-      <div className="flex w-full max-w-md flex-1 flex-col items-center text-center">
-        {children}
+        <Rules />
+
+        <Footer />
       </div>
-    </div>
+    </main>
   );
 }
 
-function Eyebrow({ children }: { children: React.ReactNode }) {
+// ---- Sections ---------------------------------------------------------------
+
+function Header() {
   return (
-    <h1 className="text-xl font-semibold uppercase tracking-[0.32em] text-white">
-      {children}
-    </h1>
+    <header className="flex w-full items-center justify-between text-[11px] font-medium uppercase tracking-[0.2em] text-white/50">
+      <span className="text-white/85">all together</span>
+      <span className="rounded-full border border-white/15 px-3 py-1">
+        cycle 01
+      </span>
+    </header>
   );
 }
 
-function Pot({
-  crc,
+function Hero({
+  potCrc,
   entrants,
   youEntered,
   loading,
 }: {
-  crc: string;
-  entrants: number;
+  potCrc: string;
+  entrants: string[];
   youEntered: boolean;
   loading: boolean;
 }) {
+  const count = entrants.length;
   return (
-    <div className="mt-10 flex flex-col items-center">
-      <span className="text-[10px] uppercase tracking-[0.32em] text-white/40">
+    <section className="mt-12 flex flex-col items-center text-center">
+      <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-white/45">
         {youEntered ? 'you’re in · pot' : 'this week’s pot'}
-      </span>
-      <span className="mt-3 font-mono text-7xl font-medium leading-none text-lime-300 tabular-nums">
-        {loading ? '…' : crc}
-      </span>
-      <span className="mt-3 text-[11px] uppercase tracking-[0.28em] text-white/50">
-        CRC
-      </span>
-      <span className="mt-6 text-xs uppercase tracking-[0.24em] text-white/60">
-        {loading
-          ? 'reading the chain…'
-          : `${entrants} ${entrants === 1 ? 'human' : 'humans'} in`}
-      </span>
+      </p>
+
+      <div className="mt-4 flex items-baseline gap-2">
+        <span
+          className="font-numeric text-[88px] leading-none font-medium text-lime-300"
+          style={{
+            textShadow: '0 0 60px rgba(190, 242, 100, 0.35)',
+          }}
+        >
+          {loading ? '—' : potCrc}
+        </span>
+        <span className="text-base font-medium uppercase tracking-[0.18em] text-white/55">
+          CRC
+        </span>
+      </div>
+
+      <p className="mt-4 text-sm text-white/65">
+        {loading ? (
+          'reading the chain…'
+        ) : (
+          <>
+            <span className="font-medium text-white">{count}</span>{' '}
+            {count === 1 ? 'human' : 'humans'} in this week
+          </>
+        )}
+      </p>
+
+      {count > 0 && !loading && <DotRow count={count} youEntered={youEntered} />}
+    </section>
+  );
+}
+
+function DotRow({ count, youEntered }: { count: number; youEntered: boolean }) {
+  const visible = Math.min(count, 24);
+  const overflow = count - visible;
+  return (
+    <div className="mt-5 flex max-w-full flex-wrap items-center justify-center gap-1.5">
+      {Array.from({ length: visible }).map((_, i) => (
+        <span
+          key={i}
+          className={`h-2 w-2 rounded-full ${
+            youEntered && i === visible - 1 ? 'bg-lime-300' : 'bg-white/40'
+          }`}
+        />
+      ))}
+      {overflow > 0 && (
+        <span className="ml-1 text-xs text-white/45">+{overflow}</span>
+      )}
     </div>
   );
 }
 
-function Action({
+function CTA({
   connected,
   miniappHost,
   loading,
@@ -181,20 +223,27 @@ function Action({
 }) {
   if (!connected) {
     return (
-      <p className="mt-8 max-w-xs text-center text-xs uppercase tracking-[0.24em] text-white/50">
-        {miniappHost ? 'waiting for wallet…' : 'open inside circles to enter'}
-      </p>
+      <div className="mt-10 rounded-2xl border border-white/10 bg-white/[0.03] px-6 py-5 text-center">
+        <p className="text-sm text-white/70">
+          {miniappHost
+            ? 'Waiting for your wallet…'
+            : 'Open this inside the Circles app to enter.'}
+        </p>
+      </div>
     );
   }
 
   if (loading) {
-    return null;
+    return <div className="mt-10 h-[68px] animate-pulse rounded-2xl bg-white/5" />;
   }
 
   if (youEntered) {
     return (
-      <div className="mt-8 w-full rounded-2xl border border-lime-400/40 px-6 py-5 text-center text-sm uppercase tracking-[0.24em] text-lime-300">
-        you&rsquo;re in for this week
+      <div className="mt-10 flex items-center justify-center gap-3 rounded-2xl border-2 border-lime-300/50 bg-lime-300/[0.06] px-6 py-5 text-center">
+        <span className="inline-block h-2 w-2 rounded-full bg-lime-300 shadow-[0_0_12px_rgba(190,242,100,0.8)]" />
+        <span className="text-base font-medium text-lime-100">
+          You’re in for this week
+        </span>
       </div>
     );
   }
@@ -203,46 +252,72 @@ function Action({
     <button
       onClick={onEnter}
       disabled={sending}
-      className="mt-8 w-full rounded-2xl border border-lime-400/40 bg-lime-400 px-6 py-5 text-base font-semibold uppercase tracking-[0.22em] text-black transition hover:bg-lime-300 disabled:cursor-not-allowed disabled:opacity-50"
+      className="mt-10 flex w-full items-center justify-between rounded-2xl bg-lime-300 px-6 py-5 text-left text-black shadow-[0_10px_40px_-10px_rgba(190,242,100,0.45)] transition active:scale-[0.98] active:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      {sending ? 'confirming…' : `${ENTRY_AMOUNT_CRC} CRC to enter`}
+      <span className="flex flex-col">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-black/55">
+          {sending ? 'Confirming…' : 'Enter the pool'}
+        </span>
+        <span className="font-numeric text-2xl font-semibold leading-tight">
+          {ENTRY_AMOUNT_CRC.toString()} CRC
+        </span>
+      </span>
+      <span className="text-3xl leading-none">{sending ? '…' : '→'}</span>
     </button>
   );
 }
 
-function HowItWorks() {
+function Timer({ value }: { value: string }) {
   return (
-    <section className="mt-10 w-full rounded-2xl border border-white/10 px-6 py-5 text-left">
-      <h2 className="text-[10px] uppercase tracking-[0.32em] text-white/40">
-        how it works
+    <div className="mt-10 flex flex-col items-center rounded-2xl border border-white/10 bg-white/[0.03] px-6 py-5">
+      <span className="text-[11px] font-medium uppercase tracking-[0.24em] text-white/45">
+        Entries close in
+      </span>
+      <span className="font-numeric mt-2 text-2xl font-medium tabular-nums text-white">
+        {value}
+      </span>
+      <span className="mt-1 text-[11px] text-white/40">Sunday 23:59 CET</span>
+    </div>
+  );
+}
+
+function Rules() {
+  const steps = [
+    { n: 1, t: `Drop ${ENTRY_AMOUNT_CRC} CRC into the pool (once per wallet, per week).` },
+    { n: 2, t: 'Sunday 23:59 CET, one human is picked at random.' },
+    { n: 3, t: 'They take the full pot home.' },
+  ];
+  return (
+    <section className="mt-10 rounded-2xl border border-white/10 bg-white/[0.02] px-6 py-5">
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/55">
+        How it works
       </h2>
-      <ul className="mt-3 space-y-2 text-sm leading-relaxed text-white/75">
-        <li>
-          <span className="text-lime-300">·</span> drop {ENTRY_AMOUNT_CRC.toString()} CRC to enter — once per wallet per week
-        </li>
-        <li>
-          <span className="text-lime-300">·</span> sunday 23:59 cet, one human is picked at random
-        </li>
-        <li>
-          <span className="text-lime-300">·</span> they take the full pot home
-        </li>
-      </ul>
+      <ol className="mt-4 space-y-3 text-[15px] leading-snug text-white/80">
+        {steps.map((s) => (
+          <li key={s.n} className="flex gap-3">
+            <span className="font-numeric mt-[2px] flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-lime-300/15 text-[11px] font-semibold text-lime-300">
+              {s.n}
+            </span>
+            <span>{s.t}</span>
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }
 
-function Countdown({ label, value }: { label: string; value: string }) {
+function Footer() {
   return (
-    <div className="mt-10 flex flex-col items-center">
-      <span className="text-[10px] uppercase tracking-[0.32em] text-white/40">
-        {label}
-      </span>
-      <span className="mt-2 font-mono text-3xl font-medium tabular-nums text-white">
-        {value}
-      </span>
-      <span className="mt-1 text-[10px] uppercase tracking-[0.24em] text-white/40">
-        sun 23:59 cet
-      </span>
-    </div>
+    <footer className="mt-10 flex flex-col items-center gap-1 text-[11px] text-white/35">
+      <a
+        href={`https://gnosisscan.io/address/${POOL_SAFE}`}
+        target="_blank"
+        rel="noopener"
+        className="font-numeric tracking-wider underline-offset-4 hover:underline"
+      >
+        Pool safe · {POOL_SAFE.slice(0, 6)}…{POOL_SAFE.slice(-4)}
+      </a>
+      <span>Built for Circles Garage · Cycle 01</span>
+    </footer>
   );
 }
