@@ -8,6 +8,11 @@ export const ENTRY_AMOUNT_CRC = 40n;
 // Atto-CRC (18 decimals) for the on-chain transfer.
 export const ENTRY_AMOUNT_ATTO = ENTRY_AMOUNT_CRC * 10n ** 18n;
 
+// Excluded from entrant counts (e.g. pre-launch test deposits the v0 UI shouldn't render).
+const BLACKLIST = new Set<string>([
+  '0x4d9145def1647eff0136205ab3034f5297b524ac',
+]);
+
 export const HUB_ABI = [
   {
     name: 'safeTransferFrom',
@@ -119,9 +124,72 @@ export async function fetchCycleDeposits(): Promise<DepositRow[]> {
   }));
 }
 
-// Unique entrants this cycle.
+// Unique entrants this cycle (skipping blacklisted addresses).
 export function uniqueEntrants(rows: DepositRow[]): string[] {
   const set = new Set<string>();
-  for (const r of rows) set.add(r.from.toLowerCase());
+  for (const r of rows) {
+    const from = r.from.toLowerCase();
+    if (BLACKLIST.has(from)) continue;
+    set.add(from);
+  }
   return Array.from(set);
+}
+
+// ----------------------------------------------------------------------------
+// Profile helpers (avatars, names, balances) via the Circles RPC
+// ----------------------------------------------------------------------------
+
+export type ProfileLite = {
+  address: string;
+  name?: string;
+  avatar?: string; // base64 data URL or external URL
+  v2Balance?: string; // decimal CRC string, not atto
+};
+
+type GetProfileViewResult = {
+  address?: string;
+  avatarInfo?: {
+    cidV0?: string;
+  };
+  profile?: {
+    name?: string;
+    previewImageUrl?: string;
+    imageUrl?: string;
+  };
+  v2Balance?: string;
+};
+
+export async function fetchProfile(address: string): Promise<ProfileLite> {
+  const res = await fetch('https://rpc.aboutcircles.com/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'circles_getProfileView',
+      params: [address.toLowerCase()],
+    }),
+  });
+  if (!res.ok) return { address };
+  const json = await res.json();
+  const r: GetProfileViewResult = json.result ?? {};
+  return {
+    address,
+    name: r.profile?.name,
+    avatar: r.profile?.previewImageUrl ?? r.profile?.imageUrl,
+    v2Balance: r.v2Balance,
+  };
+}
+
+export async function fetchProfiles(addresses: string[]): Promise<ProfileLite[]> {
+  // Fire all requests in parallel; tolerate individual failures.
+  const results = await Promise.allSettled(addresses.map((a) => fetchProfile(a)));
+  return results.map((r, i) =>
+    r.status === 'fulfilled' ? r.value : { address: addresses[i] },
+  );
+}
+
+export function shortAddress(addr: string): string {
+  if (!addr) return '';
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
