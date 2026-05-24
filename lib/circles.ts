@@ -3,6 +3,11 @@
 export const POOL_SAFE = '0xDf6fd807dB116c2dC2036c23858f3c4dcAE98eCd';
 export const HUB_V2 = '0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8';
 
+// One entry per wallet per cycle, fixed at this many CRC.
+export const ENTRY_AMOUNT_CRC = 40n;
+// Atto-CRC (18 decimals) for the on-chain transfer.
+export const ENTRY_AMOUNT_ATTO = ENTRY_AMOUNT_CRC * 10n ** 18n;
+
 export const HUB_ABI = [
   {
     name: 'safeTransferFrom',
@@ -42,13 +47,15 @@ export function getCycleRange(now = new Date()) {
 export function formatCountdown(target: Date, from = Date.now()): string {
   const diff = target.getTime() - from;
   if (diff <= 0) return 'drawing…';
-  const totalMinutes = Math.floor(diff / 60_000);
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-  const minutes = totalMinutes % 60;
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+  const totalSeconds = Math.floor(diff / 1000);
+  const days = Math.floor(totalSeconds / (60 * 60 * 24));
+  const hours = Math.floor((totalSeconds % (60 * 60 * 24)) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  if (days > 0) return `${days}d ${hours}h ${pad(minutes)}m`;
+  if (hours > 0) return `${hours}h ${pad(minutes)}m ${pad(seconds)}s`;
+  return `${minutes}m ${pad(seconds)}s`;
 }
 
 export type DepositRow = {

@@ -1,6 +1,6 @@
 # All Together
 
-> A weekly Circles ritual. Drop 1 CRC by Sunday 23:59 CET — one human takes the pot home.
+> A weekly Circles ritual. Drop 40 CRC by Sunday 23:59 CET — one human takes the pot home.
 
 **Live:** [all-together-gamma.vercel.app](https://all-together-gamma.vercel.app)
 **Inside Circles:** [open in the playground](https://circles.gnosis.io/playground?url=https://all-together-gamma.vercel.app)
@@ -10,7 +10,7 @@
 
 ## What it is
 
-A communal weekly lottery built natively on Circles. Every human drops **1 CRC** — the price of one human-hour of CRC mint — into a shared pool that lives on Gnosis Chain. At the end of the week, one human takes it home.
+A communal weekly lottery built natively on Circles. Every human drops **40 CRC** — the price of one human-hour of CRC mint — into a shared pool that lives on Gnosis Chain. At the end of the week, one human takes it home.
 
 The point isn't gambling — it's the smallest, cheapest, most Circles-coded version of *a thing humans do together once a week*.
 
@@ -27,7 +27,7 @@ The point isn't gambling — it's the smallest, cheapest, most Circles-coded ver
 | Real | Manual / next cycle |
 | --- | --- |
 | Wallet from Circles host | Random draw (manual button) |
-| 1 CRC deposit via Hub V2 | Payout (manual Safe transfer) |
+| 40 CRC deposit via Hub V2 | Payout (manual Safe transfer) |
 | Pot balance + entrant count from indexer | Winner-announcement state |
 | Per-wallet "already entered this week" check | Shareable result cards |
 

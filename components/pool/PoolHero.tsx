@@ -5,6 +5,8 @@ import { encodeFunctionData } from 'viem';
 
 import { useWallet } from '@/hooks/use-wallet';
 import {
+  ENTRY_AMOUNT_ATTO,
+  ENTRY_AMOUNT_CRC,
   HUB_ABI,
   HUB_V2,
   POOL_SAFE,
@@ -39,7 +41,7 @@ export function PoolHero() {
 
   useEffect(() => {
     refresh();
-    const tick = setInterval(() => setNow(Date.now()), 30_000);
+    const tick = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(tick);
   }, [refresh]);
 
@@ -47,6 +49,7 @@ export function PoolHero() {
   const youEntered = address
     ? entrants.includes(address.toLowerCase())
     : false;
+  const potCrc = BigInt(entrants.length) * ENTRY_AMOUNT_CRC;
   const countdown = formatCountdown(cycle.deadline, now);
 
   async function handleEnter() {
@@ -63,12 +66,11 @@ export function PoolHero() {
           address as `0x${string}`,
           POOL_SAFE as `0x${string}`,
           tokenId,
-          10n ** 18n,
+          ENTRY_AMOUNT_ATTO,
           '0x',
         ],
       });
       await sendTransactions([{ to: HUB_V2, data, value: '0' }]);
-      // Give the indexer a beat to catch up.
       await new Promise((r) => setTimeout(r, 2500));
       await refresh();
     } catch (e) {
@@ -80,73 +82,43 @@ export function PoolHero() {
 
   // ---- Render branches -------------------------------------------------------
 
-  if (!isConnected) {
-    return (
-      <Frame>
-        <Eyebrow>All Together</Eyebrow>
-        <Stat label="this week's pot" value={`${entrants.length} CRC`} />
-        <Hint>
-          Open this miniapp inside the Circles host to enter.
-          <br />
-          {isMiniappHost ? 'Waiting for wallet…' : 'You are not inside the Circles iframe.'}
-        </Hint>
-        <Foot>draws sun 23:59 cet · in {countdown}</Foot>
-      </Frame>
-    );
-  }
-
-  if (load === 'loading') {
-    return (
-      <Frame>
-        <Eyebrow>All Together</Eyebrow>
-        <Stat label="this week's pot" value="…" />
-        <Hint>reading the chain…</Hint>
-        <Foot>draws sun 23:59 cet · in {countdown}</Foot>
-      </Frame>
-    );
-  }
-
   return (
     <Frame>
       <Eyebrow>All Together</Eyebrow>
 
-      <Stat
-        label={youEntered ? 'you’re in' : 'this week’s pot'}
-        value={`${entrants.length} CRC`}
-        sub={`${entrants.length} ${entrants.length === 1 ? 'human' : 'humans'} in`}
+      <Pot
+        crc={potCrc.toString()}
+        entrants={entrants.length}
+        youEntered={youEntered}
+        loading={load === 'loading'}
       />
 
-      {!youEntered && (
-        <button
-          onClick={handleEnter}
-          disabled={sending}
-          className="mt-4 w-full rounded-2xl border border-lime-400/40 bg-lime-400 px-6 py-5 text-base font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-lime-300 disabled:opacity-50"
-        >
-          {sending ? 'confirming…' : '1 CRC to enter'}
-        </button>
-      )}
-
-      {youEntered && (
-        <div className="mt-4 w-full rounded-2xl border border-lime-400/40 px-6 py-5 text-center text-base uppercase tracking-[0.18em] text-lime-300">
-          you&rsquo;re in for this week
-        </div>
-      )}
+      <Action
+        connected={isConnected}
+        miniappHost={isMiniappHost}
+        loading={load === 'loading'}
+        youEntered={youEntered}
+        sending={sending}
+        onEnter={handleEnter}
+      />
 
       {txError && (
         <p className="mt-3 text-center text-xs text-red-400">{txError}</p>
       )}
 
-      <Foot>draws sun 23:59 cet · in {countdown}</Foot>
+      <HowItWorks />
+
+      <Countdown label="entries close in" value={countdown} />
     </Frame>
   );
 }
 
-// ---- Layout primitives -------------------------------------------------------
+// ---- UI primitives ----------------------------------------------------------
 
 function Frame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-black px-6 py-12 text-white">
-      <div className="flex w-full max-w-md flex-col items-center text-center">
+    <div className="flex min-h-[100dvh] flex-col items-center justify-start bg-black px-6 pt-12 pb-16 text-white">
+      <div className="flex w-full max-w-md flex-1 flex-col items-center text-center">
         {children}
       </div>
     </div>
@@ -155,42 +127,122 @@ function Frame({ children }: { children: React.ReactNode }) {
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <h1 className="font-heading text-2xl font-semibold uppercase tracking-[0.22em] text-white">
+    <h1 className="text-xl font-semibold uppercase tracking-[0.32em] text-white">
       {children}
     </h1>
   );
 }
 
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Pot({
+  crc,
+  entrants,
+  youEntered,
+  loading,
+}: {
+  crc: string;
+  entrants: number;
+  youEntered: boolean;
+  loading: boolean;
+}) {
   return (
     <div className="mt-10 flex flex-col items-center">
-      <span className="text-xs uppercase tracking-[0.28em] text-white/40">
-        {label}
+      <span className="text-[10px] uppercase tracking-[0.32em] text-white/40">
+        {youEntered ? 'you’re in · pot' : 'this week’s pot'}
       </span>
-      <span className="mt-3 font-mono text-6xl font-medium text-lime-300 tabular-nums">
-        {value}
+      <span className="mt-3 font-mono text-7xl font-medium leading-none text-lime-300 tabular-nums">
+        {loading ? '…' : crc}
       </span>
-      {sub && (
-        <span className="mt-2 text-xs uppercase tracking-[0.22em] text-white/50">
-          {sub}
-        </span>
-      )}
+      <span className="mt-3 text-[11px] uppercase tracking-[0.28em] text-white/50">
+        CRC
+      </span>
+      <span className="mt-6 text-xs uppercase tracking-[0.24em] text-white/60">
+        {loading
+          ? 'reading the chain…'
+          : `${entrants} ${entrants === 1 ? 'human' : 'humans'} in`}
+      </span>
     </div>
   );
 }
 
-function Hint({ children }: { children: React.ReactNode }) {
+function Action({
+  connected,
+  miniappHost,
+  loading,
+  youEntered,
+  sending,
+  onEnter,
+}: {
+  connected: boolean;
+  miniappHost: boolean;
+  loading: boolean;
+  youEntered: boolean;
+  sending: boolean;
+  onEnter: () => void;
+}) {
+  if (!connected) {
+    return (
+      <p className="mt-8 max-w-xs text-center text-xs uppercase tracking-[0.24em] text-white/50">
+        {miniappHost ? 'waiting for wallet…' : 'open inside circles to enter'}
+      </p>
+    );
+  }
+
+  if (loading) {
+    return null;
+  }
+
+  if (youEntered) {
+    return (
+      <div className="mt-8 w-full rounded-2xl border border-lime-400/40 px-6 py-5 text-center text-sm uppercase tracking-[0.24em] text-lime-300">
+        you&rsquo;re in for this week
+      </div>
+    );
+  }
+
   return (
-    <p className="mt-6 text-center text-sm leading-relaxed text-white/60">
-      {children}
-    </p>
+    <button
+      onClick={onEnter}
+      disabled={sending}
+      className="mt-8 w-full rounded-2xl border border-lime-400/40 bg-lime-400 px-6 py-5 text-base font-semibold uppercase tracking-[0.22em] text-black transition hover:bg-lime-300 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {sending ? 'confirming…' : `${ENTRY_AMOUNT_CRC} CRC to enter`}
+    </button>
   );
 }
 
-function Foot({ children }: { children: React.ReactNode }) {
+function HowItWorks() {
   return (
-    <p className="mt-12 text-center text-xs uppercase tracking-[0.22em] text-white/40">
-      {children}
-    </p>
+    <section className="mt-10 w-full rounded-2xl border border-white/10 px-6 py-5 text-left">
+      <h2 className="text-[10px] uppercase tracking-[0.32em] text-white/40">
+        how it works
+      </h2>
+      <ul className="mt-3 space-y-2 text-sm leading-relaxed text-white/75">
+        <li>
+          <span className="text-lime-300">·</span> drop {ENTRY_AMOUNT_CRC.toString()} CRC to enter — once per wallet per week
+        </li>
+        <li>
+          <span className="text-lime-300">·</span> sunday 23:59 cet, one human is picked at random
+        </li>
+        <li>
+          <span className="text-lime-300">·</span> they take the full pot home
+        </li>
+      </ul>
+    </section>
+  );
+}
+
+function Countdown({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="mt-10 flex flex-col items-center">
+      <span className="text-[10px] uppercase tracking-[0.32em] text-white/40">
+        {label}
+      </span>
+      <span className="mt-2 font-mono text-3xl font-medium tabular-nums text-white">
+        {value}
+      </span>
+      <span className="mt-1 text-[10px] uppercase tracking-[0.24em] text-white/40">
+        sun 23:59 cet
+      </span>
+    </div>
   );
 }
